@@ -5,27 +5,27 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 public class Main {
 
-    private static final int K = 5;
+    private static final int K = 5; // The K for KNN
     private final Path imageDirectory;
-    private final List<MeanMapping> nameMap;
-    private final List<MeanMapping> typeMap;
+    private final Set<ValuesMapping> nameSet;
+    private final Set<ValuesMapping> typeSet;
 
     public Main(Path directory) {
         imageDirectory = directory;
+        // start training
         var train = new Train();
         train.run();
-        this.nameMap = train.getNameMap();
-        this.typeMap = train.getTypeMap();
+        this.nameSet = train.getNameVectors();
+        this.typeSet = train.getTypeVectors();
     }
 
     public static void main(String[] args) {
@@ -42,32 +42,27 @@ public class Main {
     }
 
     private void run() {
-        int filesCount = 0, errors = 0;
+//        int filesCount = 0, errors = 0;
         try (var files = Files.walk(imageDirectory)) {
             var images = files.filter(Files::isRegularFile).toList();
             for (Path imagePath : images) {
                 try (var is = Files.newInputStream(imagePath)) {
                     var cardsInImage = imageTranscription(ImageIO.read(is));
                     System.out.printf("%s - %s%n", imagePath.getFileName(), cardsInImage);
-                    filesCount++;
-                    if (!imagePath.getFileName().toString().startsWith(cardsInImage)) {
-                        errors++;
-                    }
+//                    filesCount++;
+//                    if (!imagePath.getFileName().toString().startsWith(cardsInImage)) {
+//                        errors++;
+//                    }
                 }
             }
-            System.out.printf("Files %d, Errors %d, Rate %f%n", filesCount, errors, (errors * 100.0) / filesCount);
+//            System.out.printf("Files %d, Errors %d, Rate %f%n", filesCount, errors, (errors * 100.0) / filesCount);
         } catch (IOException e) {
             System.err.printf("Couldn't read target directory%n%s", e.getMessage());
         }
     }
 
     private String imageTranscription(BufferedImage image) {
-        return Stream.of(image)
-              .map(CardUtils::takeCardsZone)
-              .map(CardUtils::splitToCards)
-              .flatMap(Collection::stream)
-              .filter(CardUtils::cardIsValid)
-              .map(CardUtils::convertToBlackAndWhite)
+        return CardUtils.getCardImages(image).stream()
               .<String>mapMulti((card, consumer) -> {
                   consumer.accept(getCardName(card));
                   consumer.accept(getCardType(card));
@@ -76,21 +71,20 @@ public class Main {
     }
 
     private String getCardName(BufferedImage card) {
-        var hash = CardUtils.getCardNameHash(card);
-        return findKNearest(hash, nameMap);
+        var values = CardUtils.calcCardNameVector(card);
+        return findByKNearest(values, nameSet);
     }
 
     private String getCardType(BufferedImage card) {
-        var hash = CardUtils.getCardTypeHash(card);
-        return findKNearest(hash, typeMap);
+        var values = CardUtils.calcCardTypeVector(card);
+        return findByKNearest(values, typeSet);
     }
 
-
-    private String findKNearest(List<Double> hash, List<MeanMapping> map) {
+    private String findByKNearest(List<Double> values, Set<ValuesMapping> valueSet) {
         TreeMap<Double, String> kNear = new TreeMap<>();
         String ans = "";
-        for (MeanMapping e : map) {
-            kNear.put(e.distanceMincowski(hash, 2.0), e.value());
+        for (ValuesMapping e : valueSet) {
+            kNear.put(e.distanceMinkowski(values, 2.0), e.letter());
             if (kNear.size() > K) {
                 kNear.pollLastEntry();
             }

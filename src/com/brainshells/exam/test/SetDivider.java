@@ -5,6 +5,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Random;
 
+/**
+ * Test util class to split original image set to test and train sets
+ */
 public class SetDivider {
 
     static Path trainDir = Path.of("train_dir");
